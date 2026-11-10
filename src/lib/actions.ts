@@ -45,4 +45,6 @@ export type BoardAction =
   //-----Mind map----
   | "insert-mindmap"
   | "mindmap-add-child"
-  | "mindmap-add-sibling";
+  | "mindmap-add-sibling"
+  | "insert-pen"
+  | "insert-ink"; 

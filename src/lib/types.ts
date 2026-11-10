@@ -16,6 +16,7 @@ export type Tool =
   | "ellipse"
   | "arrow"
   | "pen"
+  | "ink" // ← baru
   | "eraser"
   | "mindmap";
 
@@ -135,12 +136,19 @@ export interface ArrowElement extends BaseElement {
   strokeWidth: number;
 }
 
+export interface DrawPoint extends Point {
+  /** Width multiplier 0.35 - 1.3. Dipakai hanya untuk mode "ink". */
+  w?: number;
+}
+
 /** Goresan bebas — polyline dari array titik. */
 export interface DrawElement extends BaseElement {
   type: "draw";
-  points: Point[];
+  points: DrawPoint[];
   color: string;
   strokeWidth: number;
+  /** "pen" (default) = lebar seragam, "ink" = variable-width organik. */
+  mode?: "pen" | "ink";
 }
 
 /** Union semua elemen. Gunakan `switch (el.type)` untuk narrowing. */

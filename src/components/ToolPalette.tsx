@@ -16,6 +16,7 @@ import {
   StickyNote,
   Type,
   Workflow,
+  Brush,
   type LucideIcon,
 } from "lucide-react";
 import type { Tool } from "@/lib/types";
@@ -48,6 +49,7 @@ const PALETTE: PaletteItem[] = [
   { tool: "ellipse", icon: Circle, shortcut: "O" },
   { tool: "arrow", icon: ArrowUpRight, shortcut: "A" },
   { tool: "pen", icon: Pencil, shortcut: "P" },
+  { tool: "ink", icon: Brush, shortcut: "I" },
   { tool: "mindmap", icon: Workflow, shortcut: "M" },
   { type: "separator" },
   { tool: "eraser", icon: Eraser, shortcut: "E" },

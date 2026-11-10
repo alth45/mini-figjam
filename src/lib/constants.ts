@@ -117,6 +117,7 @@ export const DEFAULTS = {
   draw: {
     color: "#1e1e1e",
     strokeWidth: 3,
+    inkStrokeWidth: 5,
     minPoints: 2, // di bawah ini goresan dibatalkan
     minDistance: 2, // jarak minimum (px) antar titik agar tidak spam
   },
@@ -186,6 +187,7 @@ export const TOOL_LABELS: Record<Tool, string> = {
   ellipse: "Elips",
   arrow: "Panah",
   pen: "Gambar",
+  ink: "Tinta",
   eraser: "Penghapus",
   mindmap: "Mind Map",
 };

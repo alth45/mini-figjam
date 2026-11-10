@@ -108,7 +108,8 @@ type DragState =
       pointerId: number;
       elementId: string;
       lastScreen: Point;
-      points: Point[];
+      lastTime: number;
+      points: import("@/lib/types").DrawPoint[]; // ← ganti Point[] → DrawPoint[]
     }
   | {
       mode: "marquee";
@@ -362,10 +363,27 @@ export function Canvas(props: CanvasProps) {
             pos.y - drag.lastScreen.y,
           );
           if (dist < DEFAULTS.draw.minDistance) return;
+
+          const now = performance.now();
+          const dt = Math.max(1, now - drag.lastTime);
+          const speed = dist / dt; // px per ms
+
           const wx = (pos.x - cv.view.x) / cv.view.zoom;
           const wy = (pos.y - cv.view.y) / cv.view.zoom;
           drag.lastScreen = pos;
-          drag.points.push({ x: wx, y: wy });
+          drag.lastTime = now;
+
+          const point: import("@/lib/types").DrawPoint = { x: wx, y: wy };
+
+          // Hanya untuk mode ink: hitung lebar dari kecepatan
+          const el = b.getElement(drag.elementId);
+          if (el?.type === "draw" && el.mode === "ink") {
+            // Cepat → tipis, lambat → tebal. Clamp 0.35 – 1.3.
+            const widthMul = Math.max(0.35, Math.min(1.3, 1.3 - speed * 0.6));
+            point.w = widthMul;
+          }
+
+          drag.points.push(point);
           b.updateElement(drag.elementId, { points: [...drag.points] });
           return;
         }
@@ -785,13 +803,17 @@ export function Canvas(props: CanvasProps) {
       }
 
       // ---- PEN ----
-      if (tool === "pen") {
+      if (tool === "pen" || tool === "ink") {
+        const isInk = tool === "ink";
         const el: BoardElement = {
           id: generateId(),
           type: "draw",
-          points: [{ x: wx, y: wy }],
+          points: [{ x: wx, y: wy, w: 1.0 }],
           color: DEFAULTS.draw.color,
-          strokeWidth: DEFAULTS.draw.strokeWidth,
+          strokeWidth: isInk
+            ? DEFAULTS.draw.inkStrokeWidth
+            : DEFAULTS.draw.strokeWidth,
+          mode: isInk ? "ink" : "pen",
         };
         addElement(el);
         selectElement(el.id);
@@ -800,7 +822,8 @@ export function Canvas(props: CanvasProps) {
           pointerId: e.pointerId,
           elementId: el.id,
           lastScreen: pos,
-          points: [{ x: wx, y: wy }],
+          lastTime: performance.now(),
+          points: [{ x: wx, y: wy, w: 1.0 }],
         };
         setDragMode("create-draw");
         e.preventDefault();

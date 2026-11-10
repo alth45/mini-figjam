@@ -6,7 +6,12 @@
 "use client";
 
 import { memo, useEffect, useRef, type KeyboardEvent } from "react";
-import type { ArrowElement, BoardElement, DrawElement } from "@/lib/types";
+import type {
+  ArrowElement,
+  BoardElement,
+  DrawElement,
+  DrawPoint,
+} from "@/lib/types";
 import { ARROW_HEAD, DRAW_HIT_WIDTH } from "@/lib/constants";
 
 // -------------------------------------------------------------------------
@@ -300,31 +305,50 @@ function ArrowSvg({ element }: { element: ArrowElement }) {
 // Path "M x0,y0 L x1,y1 L x2,y2 ..." untuk garis, plus versi transparan
 // sebagai hit area.
 // =========================================================================
+// =========================================================================
+// DRAW — dispatcher
+// =========================================================================
 function DrawSvg({ element }: { element: DrawElement }) {
-  // Hitung bounding box
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
+  const bbox = getDrawBBox(element);
+  if (element.mode === "ink") {
+    return <DrawInkSvg element={element} bbox={bbox} />;
+  }
+  return <DrawPenSvg element={element} bbox={bbox} />;
+}
+
+interface BBox {
+  minX: number;
+  minY: number;
+  w: number;
+  h: number;
+}
+
+function getDrawBBox(element: DrawElement): BBox {
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
   for (const p of element.points) {
     if (p.x < minX) minX = p.x;
     if (p.y < minY) minY = p.y;
     if (p.x > maxX) maxX = p.x;
     if (p.y > maxY) maxY = p.y;
   }
-  const w = maxX - minX;
-  const h = maxY - minY;
+  return { minX, minY, w: maxX - minX, h: maxY - minY };
+}
 
-  // Bangun path "M x,y L x,y ..." dalam koordinat lokal
+// =========================================================================
+// PEN — lebar seragam (existing behavior)
+// =========================================================================
+function DrawPenSvg({ element, bbox }: { element: DrawElement; bbox: BBox }) {
   let d = "";
   element.points.forEach((p, i) => {
-    const lx = p.x - minX;
-    const ly = p.y - minY;
+    const lx = p.x - bbox.minX;
+    const ly = p.y - bbox.minY;
     d += `${i === 0 ? "M" : "L"}${lx},${ly}`;
   });
-
-  const vbW = Math.max(1, w);
-  const vbH = Math.max(1, h);
+  const vbW = Math.max(1, bbox.w);
+  const vbH = Math.max(1, bbox.h);
 
   return (
     <div
@@ -332,8 +356,65 @@ function DrawSvg({ element }: { element: DrawElement }) {
       data-type="draw"
       className="absolute"
       style={{
-        left: minX,
-        top: minY,
+        left: bbox.minX,
+        top: bbox.minY,
+        width: vbW,
+        height: vbH,
+        overflow: "visible",
+      }}
+    >
+      <svg
+        width="100%"
+        height="100%"
+        viewBox={`0 0 ${vbW} ${vbH}`}
+        style={{ display: "block", overflow: "visible" }}
+      >
+        <path
+          d={d}
+          stroke="transparent"
+          strokeWidth={DRAW_HIT_WIDTH}
+          fill="none"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ pointerEvents: "stroke" }}
+        />
+        <path
+          d={d}
+          stroke={element.color}
+          strokeWidth={element.strokeWidth}
+          fill="none"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ pointerEvents: "none" }}
+        />
+      </svg>
+    </div>
+  );
+}
+
+// =========================================================================
+// INK — filled polygon dengan lebar variabel
+// =========================================================================
+function DrawInkSvg({ element, bbox }: { element: DrawElement; bbox: BBox }) {
+  const vbW = Math.max(1, bbox.w);
+  const vbH = Math.max(1, bbox.h);
+
+  const hitPath = buildHitPath(element.points, bbox.minX, bbox.minY);
+  const inkPath = buildInkPath(
+    element.points,
+    element.strokeWidth,
+    bbox.minX,
+    bbox.minY,
+  );
+
+  return (
+    <div
+      data-id={element.id}
+      data-type="draw"
+      className="absolute"
+      style={{
+        left: bbox.minX,
+        top: bbox.minY,
         width: vbW,
         height: vbH,
         overflow: "visible",
@@ -347,7 +428,7 @@ function DrawSvg({ element }: { element: DrawElement }) {
       >
         {/* Hit area transparan */}
         <path
-          d={d}
+          d={hitPath}
           stroke="transparent"
           strokeWidth={DRAW_HIT_WIDTH}
           fill="none"
@@ -355,17 +436,124 @@ function DrawSvg({ element }: { element: DrawElement }) {
           strokeLinejoin="round"
           style={{ pointerEvents: "stroke" }}
         />
-        {/* Garis goresan */}
+        {/* Badan tinta: polygon dengan lebar variabel + taper */}
         <path
-          d={d}
-          stroke={element.color}
-          strokeWidth={element.strokeWidth}
-          fill="none"
-          strokeLinecap="round"
-          strokeLinejoin="round"
+          d={inkPath}
+          fill={element.color}
           style={{ pointerEvents: "none" }}
         />
       </svg>
     </div>
   );
+}
+
+/** Centerline untuk hit area. */
+function buildHitPath(
+  points: DrawPoint[],
+  offsetX: number,
+  offsetY: number,
+): string {
+  let d = "";
+  points.forEach((p, i) => {
+    d += `${i === 0 ? "M" : "L"}${(p.x - offsetX).toFixed(2)},${(
+      p.y - offsetY
+    ).toFixed(2)}`;
+  });
+  return d;
+}
+
+/**
+ * Bangun polygon tertutup yang mengelilingi centerline dengan lebar
+ * variabel. Untuk tiap titik:
+ *   1. Hitung tangent (arah stroke di titik itu)
+ *   2. Hitung perpendicular (tegak lurus)
+ *   3. Offset ke kiri & kanan sebesar halfWidth
+ *   4. Terapkan taper di ujung & noise organik di sepanjang stroke
+ * Lalu trace: kiri maju, kanan mundur, tutup (Z).
+ */
+function buildInkPath(
+  points: DrawPoint[],
+  baseWidth: number,
+  offsetX: number,
+  offsetY: number,
+): string {
+  const n = points.length;
+  if (n === 0) return "";
+  if (n === 1) {
+    // Single dot (seharusnya tidak terjadi, tapi defensif)
+    const r = baseWidth / 2;
+    const cx = points[0].x - offsetX;
+    const cy = points[0].y - offsetY;
+    return `M${cx - r},${cy} a${r},${r} 0 1,0 ${r * 2},0 a${r},${r} 0 1,0 ${-r * 2},0 Z`;
+  }
+
+  const left: { x: number; y: number }[] = [];
+  const right: { x: number; y: number }[] = [];
+
+  for (let i = 0; i < n; i++) {
+    const p = points[i];
+
+    // --- Tangent ---
+    let tx: number, ty: number;
+    if (i === 0) {
+      tx = points[1].x - p.x;
+      ty = points[1].y - p.y;
+    } else if (i === n - 1) {
+      tx = p.x - points[i - 1].x;
+      ty = p.y - points[i - 1].y;
+    } else {
+      tx = points[i + 1].x - points[i - 1].x;
+      ty = points[i + 1].y - points[i - 1].y;
+    }
+    const len = Math.hypot(tx, ty) || 1;
+    const px = -ty / len; // perpendicular (rotasi 90°)
+    const py = tx / len;
+
+    // --- Taper di awal & akhir ---
+    let taper = 1;
+    if (n >= 6) {
+      const t = i / (n - 1);
+      if (t < 0.12) taper = 0.3 + (t / 0.12) * 0.7;
+      else if (t > 0.88) taper = 0.3 + ((1 - t) / 0.12) * 0.7;
+    } else if (n >= 3) {
+      // Stroke pendek: taper berdasar jarak dari tengah
+      const mid = (n - 1) / 2;
+      const fromMid = Math.abs(i - mid);
+      taper = Math.max(0.4, 1 - fromMid * 0.25);
+    }
+
+    // --- Noise organik (deterministik, tidak flicker saat re-render) ---
+    const noise = hash01(i) - 0.5; // -0.5 .. 0.5
+    const organicMul = 1 + noise * 0.3; // ±15%
+
+    const pointW = p.w ?? 1;
+    const half = (baseWidth * pointW * taper * organicMul) / 2;
+
+    left.push({
+      x: p.x - offsetX + px * half,
+      y: p.y - offsetY + py * half,
+    });
+    right.push({
+      x: p.x - offsetX - px * half,
+      y: p.y - offsetY - py * half,
+    });
+  }
+
+  // Trace: kiri maju
+  let d = `M${left[0].x.toFixed(2)},${left[0].y.toFixed(2)}`;
+  for (let i = 1; i < n; i++) {
+    d += ` L${left[i].x.toFixed(2)},${left[i].y.toFixed(2)}`;
+  }
+  // Kanan mundur
+  for (let i = n - 1; i >= 0; i--) {
+    d += ` L${right[i].x.toFixed(2)},${right[i].y.toFixed(2)}`;
+  }
+  d += " Z";
+  return d;
+}
+
+/** Deterministic pseudo-random 0..1 — tidak berubah antar render. */
+function hash01(i: number): number {
+  const x = Math.sin(i * 12.9898 + 78.233) * 43758.5453;
+  return x - Math.floor(x);
 }
