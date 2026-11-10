@@ -1,26 +1,193 @@
+/* =========================================================================
+   src/app/globals.css
+   Tailwind v4 + design tokens + CSS-only utilities.
+   ========================================================================= */
+
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* -------------------------------------------------------------------------
+   1. DESIGN TOKENS
+   -------------------------------------------------------------------------
+   Semua token di sini otomatis jadi utility Tailwind:
+     --color-accent  →  bg-accent / text-accent / border-accent / ...
+     --shadow-lg     →  shadow-lg
+     --font-sans     →  font-sans
+   ------------------------------------------------------------------------- */
+@theme {
+  /* Warna brand */
+  --color-accent: #7c3aed;
+  --color-accent-hover: #6d28d9;
+  --color-accent-soft: #ede9fe;
+  --color-figjam-blue: #0d99ff;
+
+  /* Netral */
+  --color-ink: #1e1e1e;
+  --color-muted: #6b7280;
+  --color-border: #e2e5ea;
+  --color-border-strong: #c9ced6;
+  --color-canvas: #f3f4f6;
+  --color-panel: #ffffff;
+
+  /* Elevation shadow (identik dengan figjam.html asli) */
+  --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.18), 0 4px 8px rgba(0, 0, 0, 0.08);
+
+  /* Font stack (Inter di-inject oleh layout.tsx lewat next/font) */
+  --font-sans:
+    var(--font-inter), "Segoe UI", system-ui, -apple-system, "Helvetica Neue",
+    sans-serif;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* -------------------------------------------------------------------------
+   2. BASE RESET
+   ------------------------------------------------------------------------- */
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  background: var(--color-canvas);
+  font-size: 12px;
+}
+
+/* Next.js root wrapper (div yg dibungkus layout) perlu full-height */
+body > div {
+  height: 100%;
+}
+
+/* -------------------------------------------------------------------------
+   3. CANVAS GRID
+   -------------------------------------------------------------------------
+   Pattern titik (radial-gradient) TIDAK bisa dibuat dari utility Tailwind.
+   Ukuran & posisi di-set dinamis dari Canvas.tsx lewat CSS var:
+     --grid-size, --grid-x, --grid-y
+   ------------------------------------------------------------------------- */
+.canvas-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(circle, #cfd3da 1px, transparent 1px);
+  background-size: var(--grid-size, 20px) var(--grid-size, 20px);
+  background-position: var(--grid-x, 0px) var(--grid-y, 0px);
+}
+
+/* Mode "hidden" — cukup set CSS var --grid-size ke 0 */
+.canvas-grid[data-hidden="true"] {
+  background-image: none;
+}
+
+/* -------------------------------------------------------------------------
+   4. CONTENTEDITABLE FOCUS
+   -------------------------------------------------------------------------
+   Tailwind tidak bisa target :focus pada [contenteditable] secara langsung.
+   Kita pakai dua class helper (.sticky-editable, .text-editable) yang
+   diterapkan di ElementRenderer.tsx.
+   ------------------------------------------------------------------------- */
+[contenteditable="true"] {
+  outline: none;
+  cursor: text;
+}
+
+/* Sticky: outline ungu + glow */
+.sticky-editable[contenteditable="true"]:focus {
+  box-shadow:
+    0 0 0 2px var(--color-accent),
+    0 8px 24px rgba(124, 58, 237, 0.25);
+}
+
+/* Text bebas: background putih tipis + outline */
+.text-editable[contenteditable="true"]:focus {
+  background: rgba(255, 255, 255, 0.4);
+  border-radius: 4px;
+  box-shadow: 0 0 0 2px var(--color-accent);
+}
+
+/* -------------------------------------------------------------------------
+   5. UTILITAS KECIL
+   ------------------------------------------------------------------------- */
+
+/* Cegah seleksi teks saat drag element (dipasang sementara via classList) */
+.dragging {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+}
+
+/* Sembunyikan scrollbar internal (sticky / text overflow) */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+/* Sticky note: blok teks */
+.sticky-content {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: hidden;
+}
+
+/* Text bebas: blok teks */
+.text-content {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: hidden;
+}
+
+/* Warna dot status (dipakai di StatusBar) */
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  display: inline-block;
+  margin-right: 5px;
+  background: #22c55e; /* tersimpan */
+}
+.status-dot.saving {
+  background: #f59e0b; /* belum disimpan */
+}
+.status-dot.error {
+  background: #ef4444;
+}
+
+/* -------------------------------------------------------------------------
+   DIALOG BODY — styling elemen di dalam HTML string dialog
+   ------------------------------------------------------------------------- */
+.dialog-body p {
+  margin: 0 0 8px;
+}
+.dialog-body p:last-child {
+  margin-bottom: 0;
+}
+
+.dialog-body kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid var(--color-border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: #f3f4f6;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 11px;
+  color: #374151;
+  line-height: 1.5;
+}
+
+.dialog-body code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #f3f4f6;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 11.5px;
+  color: #374151;
 }
